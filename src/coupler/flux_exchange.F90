@@ -186,6 +186,9 @@ module flux_exchange_mod
   use  surface_flux_mod, only: surface_flux
   use monin_obukhov_mod, only: mo_profile     
 
+  use hurricane_wind_mod, only: hurricane_wind_step
+  use hurricane_types_mod, only: hurricane_typ
+
   use xgrid_mod, only: xmap_type, setup_xmap, set_frac_area, &
        put_to_xgrid, get_from_xgrid, &
        xgrid_count, some, conservation_check, xgrid_init, &
@@ -330,9 +333,12 @@ real, parameter :: d378 = 1.0-d622
   logical :: divert_stocks_report = .FALSE.
   logical :: do_runoff = .TRUE.
   logical :: do_forecast = .false.
+  logical :: do_hurricane = .true.
 
 namelist /flux_exchange_nml/ z_ref_heat, z_ref_mom, ex_u_star_smooth_bug, sw1way_bug, &
-         do_area_weighted_flux, debug_stocks, divert_stocks_report, do_runoff, do_forecast
+         do_area_weighted_flux, debug_stocks, divert_stocks_report, do_runoff, & 
+         do_forecast, do_hurricane
+
 ! </NAMELIST>
 
 ! ---- allocatable module storage --------------------------------------------
@@ -1165,13 +1171,14 @@ subroutine flux_exchange_init ( Time, Atm, Land, Ice, Ocean, Ocean_state,&
 !   the atmosphere, land and ice.   
 !  </INOUT>
 !
-subroutine sfc_boundary_layer ( dt, Time, Atm, Land, Ice, Land_Ice_Atmos_Boundary )
+subroutine sfc_boundary_layer ( dt, Time, Atm, Land, Ice, Land_Ice_Atmos_Boundary, Hurricane )
 
   real,                  intent(in)  :: dt
   type(time_type),       intent(in)  :: Time
   type(atmos_data_type), intent(inout)  :: Atm
   type(land_data_type),  intent(inout)  :: Land
   type(ice_data_type),   intent(inout)  :: Ice
+  type(hurricane_type),  intent(inout)  :: Hurricane
   type(land_ice_atmos_boundary_type), intent(inout) :: Land_Ice_Atmos_Boundary
 
   ! ---- local vars ----------------------------------------------------------
@@ -1440,6 +1447,20 @@ subroutine sfc_boundary_layer ( dt, Time, Atm, Land, Ice, Land_Ice_Atmos_Boundar
   call put_to_xgrid (Atm%p_surf, 'ATM', ex_p_surf, xmap_sfc, remap_method=remap_method, complete=.false.)
   call put_to_xgrid (Atm%slp,    'ATM', ex_slp,    xmap_sfc, remap_method=remap_method, complete=.false.)
   call put_to_xgrid (Atm%gust,   'ATM', ex_gust,   xmap_sfc, remap_method=remap_method, complete=.true.)
+
+  if(do_hurricane) call hurricane_wind_step(Hurricane,Atm,ex_u_atm,ex_v_atm,xmap_sfc,Time)
+! put atmosphere bottom layer tracer data onto exchange grid
+    do tr = 1,n_exch_tr
+      call put_to_xgrid (Atm%tr_bot(:,:,tr_table(tr)%atm) , 'ATM', ex_tr_atm(:,tr), xmap_sfc, &
+          remap_method=remap_method)
+    enddo
+
+    do n = 1, Atm%fields%num_bcs  !{
+      do m = 1, Atm%fields%bc(n)%num_fields  !{
+        call put_to_xgrid (Atm%fields%bc(n)%field(m)%values, 'ATM',            &
+             ex_gas_fields_atm%bc(n)%field(m)%values, xmap_sfc, remap_method=remap_method)
+      enddo  !} m
+    enddo  !} 
 
   ! slm, Mar 20 2002: changed order in whith the data transferred from ice and land 
   ! grids, to fill t_ca first with t_surf over ocean and then with t_ca from 

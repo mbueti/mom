@@ -209,6 +209,9 @@ program coupler_main
   use flux_exchange_mod,       only: flux_ocean_to_ice
   use flux_exchange_mod,       only: flux_check_stocks, flux_init_stocks, flux_ice_to_ocean_stocks, flux_ocean_from_ice_stocks
 
+  use hurricane_wind_mod,      only: hurricane_wind_init
+  use hurricane_types_mod,     only: hurricane_type
+
   use atmos_tracer_driver_mod, only: atmos_tracer_driver_gather_data
 
   use mpp_mod,                 only: mpp_clock_id, mpp_clock_begin, mpp_clock_end, mpp_chksum
@@ -237,6 +240,7 @@ program coupler_main
   type (atmos_data_type) :: Atm
   type  (land_data_type) :: Land
   type   (ice_data_type) :: Ice
+  type (hurricane_type) :: Hurricane
   ! allow members of ocean type to be aliased (ap)
   type (ocean_public_type), target :: Ocean
   type (ocean_state_type),  pointer :: Ocean_state => NULL()
@@ -566,7 +570,7 @@ newClock14 = mpp_clock_id( 'final flux_check_stocks' )
            if (do_flux) then
               call mpp_clock_begin(newClockb)
               call sfc_boundary_layer( REAL(dt_atmos), Time_atmos, &
-                   Atm, Land, Ice, Land_ice_atmos_boundary )
+                   Atm, Land, Ice, Land_ice_atmos_boundary, Hurricane )
               if(do_chksum)  call atmos_ice_land_chksum('sfc+', (nc-1)*num_atmos_calls+na)
               call mpp_clock_end(newClockb)
            end if
@@ -1363,6 +1367,7 @@ contains
          atmos_ice_boundary, land_ice_atmos_boundary, &
          land_ice_boundary, ice_ocean_boundary, ocean_ice_boundary, &
          dt_atmos=dt_atmos, dt_cpld=dt_cpld)
+    call hurricane_wind_init(Hurricane, Atm, Time)
     call mpp_set_current_pelist(ensemble_pelist(ensemble_id,:))
     call mpp_clock_end(id_flux_exchange_init)
     call mpp_set_current_pelist()
